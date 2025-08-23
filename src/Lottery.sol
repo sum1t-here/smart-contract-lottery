@@ -15,6 +15,7 @@ contract Lottery is VRFConsumerBaseV2Plus {
     error Lottery__SendMoreEthToParticipate();
     error Lottery__TrandferFailed();
     error Lottery__LotteryNotOpened();
+    error Lottery__UpkeepNotNeeded(uint256 balance, uint256 playersLength, uint256 raffleState);
 
     /* type declarations */
     enum LotteryState {
@@ -39,6 +40,7 @@ contract Lottery is VRFConsumerBaseV2Plus {
 
     /* events */
     event PlayerEntered(address indexed player);
+    event WinnerPicked(address indexed player);
 
     constructor(
         uint256 entranceFee,
@@ -70,10 +72,40 @@ contract Lottery is VRFConsumerBaseV2Plus {
         }
     }
 
-    function pickWinner() external {
+    // When should the winner be picked
+    /**
+     * @dev This is the function chain link will call to see if
+     * the lottery is ready to have a winner picked.
+     * The following should be true in order for upkeepNeeded to be true:
+     * 1. The time interval has passed between raffle runs
+     * 2. The lottery is open
+     * 3. The contract has eth (has players)
+     * 4. Implicitly, your subscription has link
+     * @param - ignored
+     * @return upkeepNeeded - true , if it's time to restart the lottery
+     * @return - ignored
+     */
+    function checkUpkeep(bytes memory /* checkdata */ )
+        public
+        view
+        returns (bool upkeepNeeded, bytes memory /* performData */ )
+    {
+        bool timeHasPassed = (block.timestamp - s_lastTimeStamp) >= i_interval;
+        bool isOpen = s_lotteryState == LotteryState.OPEN;
+        bool hasBalance = address(this).balance > 0;
+        bool hasPlayers = s_players.length > 0;
+        upkeepNeeded = timeHasPassed && isOpen && hasBalance && hasPlayers;
+        return (upkeepNeeded, "");
+    }
+
+    function performUpKeep(bytes calldata /* performData */ ) external {
         // check to see if enough time has passed
-        if ((block.timestamp - s_lastTimeStamp) > i_interval) {
-            revert();
+
+        // `this.checkUpkeep("")` is needed since `checkUpkeep` uses calldata (external call).
+        // If defined with memory, we could call it internally without `this.`
+        (bool upKeepNeeded,) = checkUpkeep("");
+        if (!upKeepNeeded) {
+            revert Lottery__UpkeepNotNeeded(address(this).balance, s_players.length, uint256(s_lotteryState));
         }
 
         s_lotteryState = LotteryState.CALCULATING;
@@ -96,15 +128,22 @@ contract Lottery is VRFConsumerBaseV2Plus {
     }
 
     function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal virtual override {
+        // Effects (Internal Contract State)
         uint256 indexOfWinner = randomWords[0] % s_players.length;
 
         address payable recentWinner = s_players[indexOfWinner];
         s_recentWinner = recentWinner;
         s_lotteryState = LotteryState.OPEN;
+        // reset the player arr
+        s_players = new address payable[](0);
+
+        // Interactions (External Contracts Interactions)
         (bool success,) = recentWinner.call{value: address(this).balance}("");
         if (!success) {
             revert Lottery__TrandferFailed();
         }
+
+        emit WinnerPicked(s_recentWinner);
     }
 
     /**
