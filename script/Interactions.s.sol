@@ -49,10 +49,18 @@ contract FundSubscription is Script, CodeConstants {
         console2.log("On chainId: ", block.chainid);
 
         if (block.chainid == LOCAL_CHAIN_ID) {
+            console2.log(LinkToken(linkToken).balanceOf(msg.sender));
+            console2.log(msg.sender);
+            console2.log(LinkToken(linkToken).balanceOf(address(this)));
+            console2.log(address(this));
             vm.startBroadcast();
-            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(subscriptionId, FUND_AMOUNT);
+            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(subscriptionId, FUND_AMOUNT * 200);
             vm.stopBroadcast();
         } else {
+            console2.log(LinkToken(linkToken).balanceOf(msg.sender));
+            console2.log(msg.sender);
+            console2.log(LinkToken(linkToken).balanceOf(address(this)));
+            console2.log(address(this));
             vm.startBroadcast();
             LinkToken(linkToken).transferAndCall(vrfCoordinator, FUND_AMOUNT, abi.encode(subscriptionId));
             vm.stopBroadcast();

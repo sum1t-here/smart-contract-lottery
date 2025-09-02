@@ -13,7 +13,7 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
 contract Lottery is VRFConsumerBaseV2Plus {
     /* errors */
     error Lottery__SendMoreEthToParticipate();
-    error Lottery__TrandferFailed();
+    error Lottery__TransferFailed();
     error Lottery__LotteryNotOpened();
     error Lottery__UpkeepNotNeeded(uint256 balance, uint256 playersLength, uint256 raffleState);
 
@@ -41,6 +41,7 @@ contract Lottery is VRFConsumerBaseV2Plus {
     /* events */
     event PlayerEntered(address indexed player);
     event WinnerPicked(address indexed player);
+    event RequestLotteryWinner(uint256 indexed requestId);
 
     constructor(
         uint256 entranceFee,
@@ -125,6 +126,8 @@ contract Lottery is VRFConsumerBaseV2Plus {
                 )
             })
         );
+
+        emit RequestLotteryWinner(requestId);
     }
 
     function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal virtual override {
@@ -137,10 +140,12 @@ contract Lottery is VRFConsumerBaseV2Plus {
         // reset the player arr
         s_players = new address payable[](0);
 
+        s_lastTimeStamp = block.timestamp;
+
         // Interactions (External Contracts Interactions)
         (bool success,) = recentWinner.call{value: address(this).balance}("");
         if (!success) {
-            revert Lottery__TrandferFailed();
+            revert Lottery__TransferFailed();
         }
 
         emit WinnerPicked(s_recentWinner);
@@ -159,5 +164,17 @@ contract Lottery is VRFConsumerBaseV2Plus {
 
     function getPlayer(uint256 indexOfPlayer) external view returns (address) {
         return s_players[indexOfPlayer];
+    }
+
+    function getLatestTimeStamp() external view returns (uint256) {
+        return s_lastTimeStamp;
+    }
+
+    function getRecentWinner() public view returns (address) {
+        return s_recentWinner;
+    }
+
+    function getPlayerNumber() external view returns (uint256) {
+        return s_players.length;
     }
 }
